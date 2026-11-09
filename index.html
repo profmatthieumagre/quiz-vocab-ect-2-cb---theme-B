@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz – Économie et coût de la vie</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #111111;
+    --muted: #666666;
+    --line: #111111;
+    --ok: #1a6b2f;
+    --ko: #a31515;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Avenir", "Avenir Next", "Nunito Sans", "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.5;
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px 48px;
+  }
+  main { width: 100%; max-width: 560px; }
+  h1 { font-size: 1.4rem; font-weight: 700; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: .95rem; }
+  .bar { height: 4px; background: #e5e5e5; margin-bottom: 8px; }
+  .bar > div { height: 100%; width: 0; background: var(--fg); transition: width .25s; }
+  .count { font-size: .9rem; color: var(--muted); margin-bottom: 20px; display: flex; justify-content: space-between; }
+  .card { border: 2px solid var(--line); padding: 24px 20px; }
+  .label { font-size: .85rem; color: var(--muted); margin: 0 0 6px; }
+  .prompt { font-size: 1.35rem; font-weight: 600; margin: 0 0 20px; }
+  .note { font-size: .9rem; color: var(--muted); margin-top: -12px; margin-bottom: 20px; }
+  input[type=text] {
+    width: 100%;
+    font: inherit;
+    font-size: 1.1rem;
+    padding: 12px;
+    border: 2px solid var(--line);
+    border-radius: 0;
+    background: #fff;
+    color: var(--fg);
+  }
+  input[type=text]:focus-visible, button:focus-visible { outline: 3px solid #888; outline-offset: 2px; }
+  input[disabled] { background: #f4f4f4; }
+  .row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  button {
+    font: inherit;
+    padding: 10px 18px;
+    border: 2px solid var(--line);
+    background: var(--fg);
+    color: #fff;
+    cursor: pointer;
+    border-radius: 0;
+  }
+  button.secondary { background: #fff; color: var(--fg); }
+  button:hover { opacity: .85; }
+  .feedback { margin-top: 18px; min-height: 1.5em; font-weight: 600; }
+  .feedback.ok { color: var(--ok); }
+  .feedback.ko { color: var(--ko); }
+  .feedback .full { display: block; font-weight: 400; color: var(--fg); margin-top: 2px; }
+  .hidden { display: none; }
+  .score { font-size: 2.4rem; font-weight: 700; margin: 0 0 4px; }
+  ul.missed { padding-left: 18px; margin: 12px 0 0; }
+  ul.missed li { margin-bottom: 6px; }
+  ul.missed .fr { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Économie et coût de la vie</h1>
+  <p class="sub">Trouvez l’équivalent anglais. Sans article : « household », pas « a household ».</p>
+
+  <div id="quiz">
+    <div class="bar"><div id="progress"></div></div>
+    <div class="count"><span id="counter"></span><span id="scoreLive"></span></div>
+    <div class="card">
+      <p class="label">En anglais, comment dit-on…</p>
+      <p class="prompt" id="prompt"></p>
+      <p class="note hidden" id="note"></p>
+      <input type="text" id="answer" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Votre réponse en anglais">
+      <div class="row">
+        <button id="check">Valider</button>
+        <button id="skip" class="secondary">Je ne sais pas</button>
+        <button id="next" class="hidden">Suivant</button>
+      </div>
+      <div class="feedback" id="feedback" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <div id="result" class="card hidden">
+    <p class="score" id="finalScore"></p>
+    <p id="finalMsg"></p>
+    <div id="missedBox" class="hidden">
+      <p class="label" style="margin-top:18px">À revoir</p>
+      <ul class="missed" id="missedList"></ul>
+    </div>
+    <div class="row">
+      <button id="retryMissed" class="hidden">Refaire les erreurs</button>
+      <button id="restart" class="secondary">Tout recommencer</button>
+    </div>
+  </div>
+</main>
+
+<script>
+// fr : consigne affichée ; accept : réponses acceptées (sans articles) ; full : forme complète affichée à la correction
+const VOCAB = [
+  { fr: "le coût de la vie", accept: ["cost of living"], full: "the cost of living" },
+  { fr: "l’inflation", accept: ["inflation"], full: "inflation" },
+  { fr: "les droits de douane", accept: ["tariffs", "tariff"], full: "tariffs" },
+  { fr: "les prix à la consommation", accept: ["consumer prices"], full: "consumer prices" },
+  { fr: "l’essence, le carburant", accept: ["petrol", "gas", "gasoline"], full: "petrol (UK) / gas (US)" },
+  { fr: "un ménage, un foyer", accept: ["household"], full: "a household" },
+  { fr: "les salaires", accept: ["wages", "pay"], full: "wages / pay" },
+  { fr: "en termes réels", accept: ["in real terms"], full: "in real terms" },
+  { fr: "la croissance", accept: ["growth"], full: "growth" },
+  { fr: "le marché du travail", accept: ["labour market", "labor market"], full: "the labour market" },
+  { fr: "l’industrie manufacturière", accept: ["manufacturing"], full: "manufacturing" },
+  { fr: "un prêt immobilier", accept: ["mortgage"], full: "a mortgage" },
+  { fr: "le logement", accept: ["housing"], full: "housing" },
+  { fr: "avoir les moyens de / abordable", accept: ["afford", "affordable"], full: "to afford / affordable" },
+  { fr: "une baisse d’impôts / un remboursement d’impôts", accept: ["tax cut", "tax refund"], full: "a tax cut / a tax refund" },
+  { fr: "les prestations sociales", accept: ["benefits", "welfare"], full: "benefits / welfare" },
+  { fr: "l’aide alimentaire (bons alimentaires)", accept: ["food stamps"], full: "food stamps" },
+  { fr: "les primes d’assurance", accept: ["insurance premiums"], full: "insurance premiums" },
+  { fr: "peser sur", accept: ["weigh on"], full: "to weigh on" },
+  { fr: "éroder, grignoter", accept: ["erode"], full: "to erode" }
+];
+
+// Normalisation : minuscules, ponctuation retirée, articles (the/a/an) et "to" initial ignorés
+function norm(s) {
+  let words = s.toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[^a-z\s'-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter(w => !["the", "a", "an"].includes(w));
+  if (words[0] === "to" && words.length > 1) words.shift();
+  return words.join(" ");
+}
+
+const $ = id => document.getElementById(id);
+let queue = [], index = 0, score = 0, missed = [], answered = false, total = 0;
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function start(items) {
+  queue = shuffle(items);
+  total = queue.length;
+  index = 0; score = 0; missed = [];
+  $("quiz").classList.remove("hidden");
+  $("result").classList.add("hidden");
+  show();
+}
+
+function show() {
+  answered = false;
+  const q = queue[index];
+  $("prompt").textContent = q.fr;
+  const note = $("note");
+  if (q.note) { note.textContent = q.note; note.classList.remove("hidden"); }
+  else note.classList.add("hidden");
+  const input = $("answer");
+  input.value = ""; input.disabled = false;
+  $("feedback").textContent = ""; $("feedback").className = "feedback";
+  $("check").classList.remove("hidden");
+  $("skip").classList.remove("hidden");
+  $("next").classList.add("hidden");
+  $("counter").textContent = "Question " + (index + 1) + " / " + total;
+  $("scoreLive").textContent = "Score : " + score;
+  $("progress").style.width = (index / total * 100) + "%";
+  input.focus();
+}
+
+function reveal(ok, skipped) {
+  const q = queue[index];
+  answered = true;
+  $("answer").disabled = true;
+  const fb = $("feedback");
+  if (ok) {
+    score++;
+    fb.className = "feedback ok";
+    fb.innerHTML = "Correct !<span class='full'></span>";
+  } else {
+    missed.push(q);
+    fb.className = "feedback ko";
+    fb.innerHTML = (skipped ? "Réponse :" : "Pas tout à fait.") + "<span class='full'></span>";
+  }
+  fb.querySelector(".full").textContent = q.full;
+  $("scoreLive").textContent = "Score : " + score;
+  $("check").classList.add("hidden");
+  $("skip").classList.add("hidden");
+  $("next").classList.remove("hidden");
+  $("next").focus();
+}
+
+function check() {
+  if (answered) return;
+  const val = norm($("answer").value);
+  if (!val) return;
+  const q = queue[index];
+  reveal(q.accept.map(norm).includes(val), false);
+}
+
+function next() {
+  index++;
+  if (index >= total) finish(); else show();
+}
+
+function finish() {
+  $("quiz").classList.add("hidden");
+  $("result").classList.remove("hidden");
+  $("finalScore").textContent = score + " / " + total;
+  const ratio = score / total;
+  $("finalMsg").textContent =
+    ratio === 1 ? "Sans faute." :
+    ratio >= 0.7 ? "Bon score. Reprenez les mots manqués." :
+    "Continuez à réviser : refaites les erreurs pour fixer le vocabulaire.";
+  const list = $("missedList");
+  list.innerHTML = "";
+  missed.forEach(q => {
+    const li = document.createElement("li");
+    li.innerHTML = "<strong></strong> <span class='fr'></span>";
+    li.querySelector("strong").textContent = q.full;
+    li.querySelector(".fr").textContent = "– " + q.fr;
+    list.appendChild(li);
+  });
+  $("missedBox").classList.toggle("hidden", missed.length === 0);
+  $("retryMissed").classList.toggle("hidden", missed.length === 0);
+}
+
+$("check").addEventListener("click", check);
+$("skip").addEventListener("click", () => { if (!answered) reveal(false, true); });
+$("next").addEventListener("click", next);
+$("answer").addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); answered ? next() : check(); }
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && answered && document.activeElement !== $("next")) next();
+});
+$("restart").addEventListener("click", () => start(VOCAB));
+$("retryMissed").addEventListener("click", () => start(missed.slice()));
+
+start(VOCAB);
+</script>
+</body>
+</html>
